@@ -35,7 +35,6 @@ en genereert inzichten, visualisaties en een downloadbaar rapport.
 uploaded_file = st.file_uploader("📁 Upload Excel of CSV", type=["xlsx", "csv"])
 
 @st.cache_data
-
 def load_data(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -71,12 +70,18 @@ if uploaded_file:
         category_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
         datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
 
-        st.subheader("🚨 Waarschuwingsdetectie (Outliers)")
+        st.subheader("🚨 Waarschuwingsdetectie (Outliers op basis van IQR)")
         warnings = []
         for col in numeric_cols:
-            z_scores = np.abs(stats.zscore(df[col].dropna()))
-            if (z_scores > 3).sum() > 0:
-                warnings.append(f"⚠️ {col}: bevat {int((z_scores > 3).sum())} mogelijke uitschieters (Z-score > 3)")
+            series = df[col].dropna()
+            q1 = np.percentile(series, 25)
+            q3 = np.percentile(series, 75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            outliers = ((series < lower_bound) | (series > upper_bound)).sum()
+            if outliers > 0:
+                warnings.append(f"⚠️ {col}: bevat {outliers} mogelijke uitschieters (IQR-methode)")
         if warnings:
             for w in warnings:
                 st.write(w)
