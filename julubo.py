@@ -21,9 +21,9 @@ st.markdown("""
     margin-right: 15px;
 }
 </style>
-<div class="logo-container">
+<div class="logo-container"; style="text-align: center;">
     <img src="https://julubo.nl/media/website/Logo-Julubo-2-2.png" alt="Julubo Logo">
-    <div style="text-align: center;"><h2>Julubo Automatische Analyse</h2></div>
+    <h2>Julubo Automatische Analyse</h2>
     </div>
     <div style="text-align: center;"><p>Jouw data. Jouw inzichten. Geen gedoe.</p></div>
 """, unsafe_allow_html=True)
