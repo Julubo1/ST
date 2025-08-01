@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
+from scipy import stats
 import io
 from PIL import Image
 
@@ -26,17 +28,15 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
-
 st.markdown("""
 Upload een Excel- of CSV-bestand. Julubo analyseert automatisch de inhoud van je dataset 
 en genereert inzichten, visualisaties en een downloadbaar rapport.
 """)
 
-# --- Upload sectie
 uploaded_file = st.file_uploader("📁 Upload Excel of CSV", type=["xlsx", "csv"])
 
 @st.cache_data
+
 def load_data(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -53,7 +53,6 @@ if uploaded_file:
     st.success("✅ Bestand succesvol geladen!")
     st.dataframe(df.head(10), use_container_width=True)
 
-    # --- Tabs voor analyse
     tab1, tab2, tab3 = st.tabs(["📌 Samenvatting", "📈 Grafieken", "📥 Download"])
 
     with tab1:
@@ -69,15 +68,56 @@ if uploaded_file:
         })
         st.dataframe(dtypes)
 
-    with tab2:
-        st.subheader("📈 Verken je data via grafieken")
-
-    # Kolommen per type ophalen
         numeric_cols = df.select_dtypes(include='number').columns.tolist()
         category_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
         datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
 
-    # Keuze plottype
+        st.subheader("🚨 Waarschuwingsdetectie (Outliers)")
+        warnings = []
+        for col in numeric_cols:
+            z_scores = np.abs(stats.zscore(df[col].dropna()))
+            if (z_scores > 3).sum() > 0:
+                warnings.append(f"⚠️ {col}: bevat {int((z_scores > 3).sum())} mogelijke uitschieters (Z-score > 3)")
+        if warnings:
+            for w in warnings:
+                st.write(w)
+        else:
+            st.success("Geen opvallende uitschieters gevonden in numerieke kolommen.")
+
+        st.subheader("📊 Correlatie tussen numerieke kolommen")
+        if len(numeric_cols) >= 2:
+            corr = df[numeric_cols].corr()
+            fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+            sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f", ax=ax_corr)
+            st.pyplot(fig_corr)
+
+        st.subheader("📑 Geautomatiseerde observaties")
+        for col in numeric_cols:
+            mean = df[col].mean()
+            std = df[col].std()
+            st.write(f"Kolom **{col}** heeft een gemiddelde van **{mean:.2f}** en standaarddeviatie van **{std:.2f}**.")
+            if df[col].isnull().sum() > 0:
+                st.warning(f"{df[col].isnull().sum()} ontbrekende waarden in {col}.")
+
+        st.subheader("🧪 Dataconsistentie & Duplicaten")
+        st.write(f"Totaal rijen: {len(df)}")
+        dupes = df.duplicated().sum()
+        if dupes:
+            st.warning(f"Bevat {dupes} duplicaten.")
+        else:
+            st.success("Geen duplicaten gevonden.")
+
+        if datetime_cols:
+            st.subheader("📈 Tijdreeksanalyse")
+            dt_col = st.selectbox("Datumkolom kiezen", datetime_cols)
+            metric = st.selectbox("Numerieke kolom voor tijdreeks", numeric_cols)
+            df[dt_col] = pd.to_datetime(df[dt_col])
+            time_df = df[[dt_col, metric]].dropna().sort_values(dt_col)
+            time_df = time_df.groupby(pd.Grouper(key=dt_col, freq='W'))[metric].mean()
+            st.line_chart(time_df)
+
+    with tab2:
+        st.subheader("📈 Verken je data via grafieken")
         plot_type = st.radio("Kies plottype:", ["Histogram (numeriek)", "Scatterplot", "Frequentieplot (categorisch)"])
 
         if plot_type == "Histogram (numeriek)":
@@ -114,19 +154,16 @@ if uploaded_file:
 
     with tab3:
         st.subheader("📥 Download analyse & gegevens")
-
         summary = df.describe().transpose()
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             df.to_excel(writer, index=False, sheet_name="Gegevens")
             summary.to_excel(writer, sheet_name="Analyse")
-
         st.download_button(
             "📤 Download Excel-bestand",
             data=output.getvalue(),
             file_name="julubo_rapport.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
 else:
     st.info("⬆️ Upload een bestand om te starten.")
