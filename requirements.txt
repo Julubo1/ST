@@ -5,8 +5,5 @@ seaborn
 openpyxl
 xlsxwriter
 Pillow
-scipy
 numpy
-datetime
-date
-stats
+
