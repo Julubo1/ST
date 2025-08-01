@@ -14,19 +14,23 @@ st.markdown("""
 .logo-container {
     display: flex;
     align-items: center;
+    justify-content: center;
     margin-bottom: 20px;
+    gap: 15px;
 }
 .logo-container img {
     height: 60px;
-    margin-right: 15px;
 }
 </style>
-<div class="logo-container" style="text-align: center;">
+<div class="logo-container">
     <img src="https://julubo.nl/media/website/Logo-Julubo-2-2.png" alt="Julubo Logo">
     <h2>Julubo Automatische Analyse</h2>
-    </div>
-    <div style="text-align: center;"><p>Jouw data. Jouw inzichten. Geen gedoe.</p></div>
+</div>
+<div style="text-align: center;">
+    <p>Jouw data. Jouw inzichten. Geen gedoe.</p>
+</div>
 """, unsafe_allow_html=True)
+
 
 st.markdown("""
 Upload een Excel- of CSV-bestand. Julubo analyseert automatisch de inhoud van je dataset 
