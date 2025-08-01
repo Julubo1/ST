@@ -6,7 +6,6 @@ import io
 from PIL import Image
 
 st.set_page_config(page_title="Julubo Analyse", layout="wide")
-st.title("📊 Julubo Automatische Data-analyse")
 
 st.markdown("""
 <style>
