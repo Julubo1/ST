@@ -70,47 +70,47 @@ if uploaded_file:
         st.dataframe(dtypes)
 
     with tab2:
-    st.subheader("📈 Verken je data via grafieken")
+        st.subheader("📈 Verken je data via grafieken")
 
     # Kolommen per type ophalen
-    numeric_cols = df.select_dtypes(include='number').columns.tolist()
-    category_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-    datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+        numeric_cols = df.select_dtypes(include='number').columns.tolist()
+        category_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
 
     # Keuze plottype
-    plot_type = st.radio("Kies plottype:", ["Histogram (numeriek)", "Scatterplot", "Frequentieplot (categorisch)"])
+        plot_type = st.radio("Kies plottype:", ["Histogram (numeriek)", "Scatterplot", "Frequentieplot (categorisch)"])
 
-    if plot_type == "Histogram (numeriek)":
-        if numeric_cols:
-            selected_col = st.selectbox("Kolom voor histogram", numeric_cols)
-            fig, ax = plt.subplots()
-            sns.histplot(df[selected_col].dropna(), kde=True, ax=ax)
-            ax.set_title(f"Verdeling van {selected_col}")
-            st.pyplot(fig)
-        else:
-            st.warning("Geen numerieke kolommen beschikbaar.")
+        if plot_type == "Histogram (numeriek)":
+            if numeric_cols:
+                selected_col = st.selectbox("Kolom voor histogram", numeric_cols)
+                fig, ax = plt.subplots()
+                sns.histplot(df[selected_col].dropna(), kde=True, ax=ax)
+                ax.set_title(f"Verdeling van {selected_col}")
+                st.pyplot(fig)
+            else:
+                st.warning("Geen numerieke kolommen beschikbaar.")
 
-    elif plot_type == "Scatterplot":
-        if len(numeric_cols) >= 2:
-            x = st.selectbox("X-as", numeric_cols, index=0)
-            y = st.selectbox("Y-as", numeric_cols, index=1)
-            fig2, ax2 = plt.subplots()
-            sns.scatterplot(data=df, x=x, y=y, ax=ax2)
-            ax2.set_title(f"Relatie tussen {x} en {y}")
-            st.pyplot(fig2)
-        else:
-            st.warning("Minimaal twee numerieke kolommen nodig voor een scatterplot.")
+        elif plot_type == "Scatterplot":
+            if len(numeric_cols) >= 2:
+                x = st.selectbox("X-as", numeric_cols, index=0)
+                y = st.selectbox("Y-as", numeric_cols, index=1)
+                fig2, ax2 = plt.subplots()
+                sns.scatterplot(data=df, x=x, y=y, ax=ax2)
+                ax2.set_title(f"Relatie tussen {x} en {y}")
+                st.pyplot(fig2)
+            else:
+                st.warning("Minimaal twee numerieke kolommen nodig voor een scatterplot.")
 
-    elif plot_type == "Frequentieplot (categorisch)":
-        if category_cols:
-            cat_col = st.selectbox("Kolom voor frequentieplot", category_cols)
-            fig3, ax3 = plt.subplots()
-            sns.countplot(data=df, x=cat_col, order=df[cat_col].value_counts().index[:15], ax=ax3)
-            ax3.set_title(f"Frequentie van {cat_col}")
-            ax3.set_xticklabels(ax3.get_xticklabels(), rotation=45, ha='right')
-            st.pyplot(fig3)
-        else:
-            st.warning("Geen categorische kolommen beschikbaar.")
+        elif plot_type == "Frequentieplot (categorisch)":
+            if category_cols:
+                cat_col = st.selectbox("Kolom voor frequentieplot", category_cols)
+                fig3, ax3 = plt.subplots()
+                sns.countplot(data=df, x=cat_col, order=df[cat_col].value_counts().index[:15], ax=ax3)
+                ax3.set_title(f"Frequentie van {cat_col}")
+                ax3.set_xticklabels(ax3.get_xticklabels(), rotation=45, ha='right')
+                st.pyplot(fig3)
+            else:
+                st.warning("Geen categorische kolommen beschikbaar.")
 
     with tab3:
         st.subheader("📥 Download analyse & gegevens")
