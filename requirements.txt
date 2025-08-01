@@ -4,7 +4,7 @@ matplotlib
 seaborn
 openpyxl
 xlsxwriter
-pil
+pillow
 scipy
 numpy
 datetime
