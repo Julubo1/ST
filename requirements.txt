@@ -4,3 +4,8 @@ matplotlib
 seaborn
 openpyxl
 xlsxwriter
+pil
+scipy
+numpy
+datetime
+date
