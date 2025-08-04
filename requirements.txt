@@ -6,8 +6,9 @@ openpyxl
 xlsxwriter
 Pillow
 numpy
-io
+Python-IO
 urllib3
+
 
 
 
