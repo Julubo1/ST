@@ -1,94 +1,113 @@
 import streamlit as st
 import pandas as pd
 import requests
-from io import BytesIO
 from urllib.parse import quote
+from SPARQLWrapper import SPARQLWrapper, JSON
+from io import BytesIO
 
-# --- Functie: OpenKVK opzoeken ---
-def zoek_openkvk(zoekterm):
-    url = f"https://api.openkvk.nl/api/v1/companies?search={quote(zoekterm)}"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        return data.get("data", [])
-    except:
-        return []
+# OpenKVK zoeken via overheid.io
+def zoek_openkvk(term):
+    url = f"https://api.overheid.io/openkvk?query={quote(term)}&size=20&fields[]=handelsnaam&fields[]=postcode&fields[]=plaats"
+    r = requests.get(url)
+    data = r.json().get("_embedded", {}).get("bedrijf", [])
+    rows = []
+    for b in data:
+        rows.append({
+            "naam": b.get("handelsnaam"),
+            "postcode": b.get("postcode"),
+            "plaats": b.get("plaats"),
+            "kvk": b.get("dossiernummer")
+        })
+    return pd.DataFrame(rows)
 
-# --- Functie: Filteren op branche, land, regio ---
-def filter_resultaten(resultaten, branche, land, regio):
-    df = pd.DataFrame(resultaten)
+# OpenStreetMap Overpass query: healthcare facilities
+def zoek_osm(land, regio, branche):
+    bbox = ""  # eventueel filter op binnen Nederland via bbox
+    q = """
+    [out:json][timeout:25];
+    area["name"="%s"]->.searchArea;
+    node(area.searchArea)[amenity~"clinic|hospital|doctors"];
+    out center;
+    """ % land
+    r = requests.post("http://overpass-api.de/api/interpreter", data={"data": q})
+    data = r.json().get("elements", [])
+    rows = []
+    for e in data:
+        rows.append({
+            "osm_name": e.get("tags", {}).get("name"),
+            "osm_type": e.get("tags", {}).get("amenity"),
+            "lat": e.get("lat"),
+            "lon": e.get("lon")
+        })
+    return pd.DataFrame(rows)
 
+# Wikidata SPARQL zoeken op organisatie
+def zoek_wikidata(term):
+    sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+    sparql.setQuery(f"""
+    SELECT ?org ?orgLabel ?sitio ?instelling ?plaatsLabel WHERE {{
+      ?org rdfs:label "{term}"@nl.
+      OPTIONAL {{ ?org wdt:P159 ?plaats. }}
+      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "nl,en". }}
+    }}
+    """)
+    sparql.setReturnFormat(JSON)
+    res = sparql.query().convert()
+    rows = []
+    for b in res["results"]["bindings"]:
+        rows.append({
+            "wd_name": b["orgLabel"]["value"],
+            "wd_plaats": b.get("plaatsLabel", {}).get("value")
+        })
+    return pd.DataFrame(rows)
+
+# NACE/SBI mapping in CSV
+nace_df = pd.DataFrame({
+    "sbi_code": ["47.7", "86.10", "62.01"],
+    "omschrijving": ["Detailhandel via post/kantoor", "Verpleegzorg", "Software ontwikkeling"]
+})
+
+def filter_input(df, naam, branche, land, regio):
+    if naam:
+        df = df[df.apply(lambda r: naam.lower() in str(r.get("naam","")).lower(), axis=1)]
     if branche:
-        df = df[df["sbi_code_description"].str.contains(branche, case=False, na=False)]
-
-    if land:
-        df = df[df["country"].str.contains(land, case=False, na=False)]
-
+        df = df[df.apply(lambda r: branche.lower() in str(r.get("sbi_omschrijving","")).lower(), axis=1)]
     if regio:
-        df = df[df["city"].str.contains(regio, case=False, na=False)]
-
+        df = df[df["plaats"].str.contains(regio, case=False, na=False)]
     return df
 
-# --- Functie: Voeg ECD toe via CSV (optioneel) ---
-def verrijk_met_ecd(df, ecd_df):
-    return df.merge(ecd_df, how="left", left_on="name", right_on="organisatie")
-
-# --- Streamlit UI ---
-st.set_page_config(page_title="Open Data Bedrijvenscanner", layout="wide")
-st.title("🔎 Open Data Bedrijvenscanner")
-
-st.markdown("Zoek bedrijven op basis van naam, branche, land en/of regio. Combineert OpenKVK met eigen ECD-data.")
+st.title("🔍 Open Data Scanner – meervoudige bronnen")
 
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    naam = st.text_input("🔤 Bedrijfsnaam (deel of volledig)")
-with col2:
-    branche = st.text_input("🏭 Branche / sector")
-with col3:
-    land = st.selectbox("🌍 Land", ["", "Nederland"], index=1)
-with col4:
-    regio = st.text_input("📍 Regio / plaats")
+naam = col1.text_input("Naam")
+branche = col2.text_input("Branche")
+land = col3.selectbox("Land", ["", "Nederland"])
+regio = col4.text_input("Regio / plaats")
+ecd_file = st.file_uploader("Optionele ECD-mapping CSV", type="csv")
+knop = st.button("Zoeken")
 
-ecd_file = st.file_uploader("📎 Upload optionele ECD-mapping CSV (kolommen: organisatie, ecd_systeem)", type="csv")
+if knop:
+    st.info("Resultaten verzamelen…")
+    df_okvk = zoek_openkvk(naam or branche) if naam or branche else pd.DataFrame()
+    df_wd = zoek_wikidata(naam) if naam else pd.DataFrame()
+    df_osm = zoek_osm(land or "Nederland", regio, branche) if land else pd.DataFrame()
 
-zoek_button = st.button("Zoeken")
+    # combineer OpenKVK + mapping NACE
+    df_okvk["sbi_omschrijving"] = df_okvk["kvk"].map(lambda _: "")
+    df_okvk = filter_input(df_okvk, naam, branche, land, regio)
+    if ecd_file:
+        ecd = pd.read_csv(ecd_file)
+        df_okvk = df_okvk.merge(ecd, how="left", left_on="naam", right_on="organisatie")
 
-if zoek_button:
-    st.info("Zoeken in OpenKVK...")
-    data = zoek_openkvk(naam if naam else branche)
+    st.subheader("OpenKVK resultaten")
+    st.dataframe(df_okvk)
+    st.subheader("Wikidata resultaten")
+    st.dataframe(df_wd)
+    st.subheader("OSM health‑facilities")
+    st.dataframe(df_osm)
 
-    if not data:
-        st.warning("Geen resultaten gevonden.")
-    else:
-        st.success(f"{len(data)} bedrijven gevonden.")
-        df = pd.DataFrame(data)
-
-        # Structureren
-        df = df.rename(columns={
-            "trade_names": "name",
-            "sbi_code": "sbi_code",
-            "sbi_code_description": "sbi_code_description",
-            "city": "city",
-            "address": "address",
-            "kvk_number": "kvk_number",
-        })
-        df["country"] = "Nederland"
-
-        # Filteren
-        df = filter_resultaten(df, branche, land, regio)
-
-        # Verrijken met ECD
-        if ecd_file:
-            ecd_df = pd.read_csv(ecd_file)
-            df = verrijk_met_ecd(df, ecd_df)
-
-        st.dataframe(df)
-
-        # Downloadknoppen
-        col_csv, col_excel = st.columns(2)
-        with col_csv:
-            st.download_button("⬇️ Download als CSV", data=df.to_csv(index=False), file_name="bedrijven.csv", mime="text/csv")
-        with col_excel:
-            towrite = BytesIO()
-            df.to_excel(towrite, index=False, engine="openpyxl")
-            st.download_button("⬇️ Download als Excel", data=towrite.getvalue(), file_name="bedrijven.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    # download knoppen voor OpenKVK
+    csv = df_okvk.to_csv(index=False)
+    xlsx = BytesIO(); df_okvk.to_excel(xlsx, index=False, engine="openpyxl")
+    st.download_button("Download CSV", csv, "bedrijven.csv", "text/csv")
+    st.download_button("Download Excel", xlsx.getvalue(), "bedrijven.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
