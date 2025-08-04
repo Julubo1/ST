@@ -1,178 +1,94 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import io
-from PIL import Image
+import requests
+from io import BytesIO
+from urllib.parse import quote
 
-st.set_page_config(page_title="Julubo Analyse", layout="wide")
-
-st.markdown("""
-<style>
-#MainMenu, footer {visibility: hidden;}
-.logo-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
-    gap: 15px;
-}
-.logo-container img {
-    height: 60px;
-}
-</style>
-<div class="logo-container">
-    <img src="https://julubo.nl/media/website/Logo-Julubo-2-2.png" alt="Julubo Logo">
-    <h2>Julubo Automatische Analyse</h2>
-</div>
-<div style="text-align: center;">
-    <p>Jouw data. Jouw inzichten. Geen gedoe.</p>
-</div>
-""", unsafe_allow_html=True)
-
-
-st.markdown("""
-Upload een Excel- of CSV-bestand. Julubo analyseert automatisch de inhoud van je dataset 
-en genereert inzichten, visualisaties en een downloadbaar rapport.
-""")
-
-uploaded_file = st.file_uploader("📁 Upload Excel of CSV", type=["xlsx", "csv"])
-
-@st.cache_data
-def load_data(file):
-    if file.name.endswith(".csv"):
-        return pd.read_csv(file)
-    else:
-        return pd.read_excel(file)
-
-if uploaded_file:
+# --- Functie: OpenKVK opzoeken ---
+def zoek_openkvk(zoekterm):
+    url = f"https://api.openkvk.nl/api/v1/companies?search={quote(zoekterm)}"
     try:
-        df = load_data(uploaded_file)
-    except Exception as e:
-        st.error(f"❌ Kon bestand niet inlezen: {e}")
-        st.stop()
+        response = requests.get(url)
+        data = response.json()
+        return data.get("data", [])
+    except:
+        return []
 
-    st.success("✅ Bestand succesvol geladen!")
-    st.dataframe(df.head(10), use_container_width=True)
+# --- Functie: Filteren op branche, land, regio ---
+def filter_resultaten(resultaten, branche, land, regio):
+    df = pd.DataFrame(resultaten)
 
-    tab1, tab2, tab3 = st.tabs(["📌 Samenvatting", "📈 Grafieken", "📥 Download"])
+    if branche:
+        df = df[df["sbi_code_description"].str.contains(branche, case=False, na=False)]
 
-    with tab1:
-        st.subheader("🔎 Statistische samenvatting")
-        st.write(df.describe(include='all').transpose())
+    if land:
+        df = df[df["country"].str.contains(land, case=False, na=False)]
 
-        st.subheader("🧠 Detected kolomtypes")
-        dtypes = pd.DataFrame({
-            "Kolom": df.columns,
-            "Type": df.dtypes.astype(str),
-            "Unieke waarden": df.nunique(),
-            "Null-waarden": df.isnull().sum()
+    if regio:
+        df = df[df["city"].str.contains(regio, case=False, na=False)]
+
+    return df
+
+# --- Functie: Voeg ECD toe via CSV (optioneel) ---
+def verrijk_met_ecd(df, ecd_df):
+    return df.merge(ecd_df, how="left", left_on="name", right_on="organisatie")
+
+# --- Streamlit UI ---
+st.set_page_config(page_title="Open Data Bedrijvenscanner", layout="wide")
+st.title("🔎 Open Data Bedrijvenscanner")
+
+st.markdown("Zoek bedrijven op basis van naam, branche, land en/of regio. Combineert OpenKVK met eigen ECD-data.")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    naam = st.text_input("🔤 Bedrijfsnaam (deel of volledig)")
+with col2:
+    branche = st.text_input("🏭 Branche / sector")
+with col3:
+    land = st.selectbox("🌍 Land", ["", "Nederland"], index=1)
+with col4:
+    regio = st.text_input("📍 Regio / plaats")
+
+ecd_file = st.file_uploader("📎 Upload optionele ECD-mapping CSV (kolommen: organisatie, ecd_systeem)", type="csv")
+
+zoek_button = st.button("Zoeken")
+
+if zoek_button:
+    st.info("Zoeken in OpenKVK...")
+    data = zoek_openkvk(naam if naam else branche)
+
+    if not data:
+        st.warning("Geen resultaten gevonden.")
+    else:
+        st.success(f"{len(data)} bedrijven gevonden.")
+        df = pd.DataFrame(data)
+
+        # Structureren
+        df = df.rename(columns={
+            "trade_names": "name",
+            "sbi_code": "sbi_code",
+            "sbi_code_description": "sbi_code_description",
+            "city": "city",
+            "address": "address",
+            "kvk_number": "kvk_number",
         })
-        st.dataframe(dtypes)
+        df["country"] = "Nederland"
 
-        numeric_cols = df.select_dtypes(include='number').columns.tolist()
-        category_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-        datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+        # Filteren
+        df = filter_resultaten(df, branche, land, regio)
 
-        st.subheader("🚨 Waarschuwingsdetectie (Outliers op basis van IQR)")
-        warnings = []
-        for col in numeric_cols:
-            series = df[col].dropna()
-            q1 = np.percentile(series, 25)
-            q3 = np.percentile(series, 75)
-            iqr = q3 - q1
-            lower_bound = q1 - 1.5 * iqr
-            upper_bound = q3 + 1.5 * iqr
-            outliers = ((series < lower_bound) | (series > upper_bound)).sum()
-            if outliers > 0:
-                warnings.append(f"⚠️ {col}: bevat {outliers} mogelijke uitschieters (IQR-methode)")
-        if warnings:
-            for w in warnings:
-                st.write(w)
-        else:
-            st.success("Geen opvallende uitschieters gevonden in numerieke kolommen.")
+        # Verrijken met ECD
+        if ecd_file:
+            ecd_df = pd.read_csv(ecd_file)
+            df = verrijk_met_ecd(df, ecd_df)
 
-        st.subheader("📊 Correlatie tussen numerieke kolommen")
-        if len(numeric_cols) >= 2:
-            corr = df[numeric_cols].corr()
-            fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
-            sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f", ax=ax_corr)
-            st.pyplot(fig_corr)
+        st.dataframe(df)
 
-        st.subheader("📑 Geautomatiseerde observaties")
-        for col in numeric_cols:
-            mean = df[col].mean()
-            std = df[col].std()
-            st.write(f"Kolom **{col}** heeft een gemiddelde van **{mean:.2f}** en standaarddeviatie van **{std:.2f}**.")
-            if df[col].isnull().sum() > 0:
-                st.warning(f"{df[col].isnull().sum()} ontbrekende waarden in {col}.")
-
-        st.subheader("🧪 Dataconsistentie & Duplicaten")
-        st.write(f"Totaal rijen: {len(df)}")
-        dupes = df.duplicated().sum()
-        if dupes:
-            st.warning(f"Bevat {dupes} duplicaten.")
-        else:
-            st.success("Geen duplicaten gevonden.")
-
-        if datetime_cols:
-            st.subheader("📈 Tijdreeksanalyse")
-            dt_col = st.selectbox("Datumkolom kiezen", datetime_cols)
-            metric = st.selectbox("Numerieke kolom voor tijdreeks", numeric_cols)
-            df[dt_col] = pd.to_datetime(df[dt_col])
-            time_df = df[[dt_col, metric]].dropna().sort_values(dt_col)
-            time_df = time_df.groupby(pd.Grouper(key=dt_col, freq='W'))[metric].mean()
-            st.line_chart(time_df)
-
-    with tab2:
-        st.subheader("📈 Verken je data via grafieken")
-        plot_type = st.radio("Kies plottype:", ["Histogram (numeriek)", "Scatterplot", "Frequentieplot (categorisch)"])
-
-        if plot_type == "Histogram (numeriek)":
-            if numeric_cols:
-                selected_col = st.selectbox("Kolom voor histogram", numeric_cols)
-                fig, ax = plt.subplots()
-                sns.histplot(df[selected_col].dropna(), kde=True, ax=ax)
-                ax.set_title(f"Verdeling van {selected_col}")
-                st.pyplot(fig)
-            else:
-                st.warning("Geen numerieke kolommen beschikbaar.")
-
-        elif plot_type == "Scatterplot":
-            if len(numeric_cols) >= 2:
-                x = st.selectbox("X-as", numeric_cols, index=0)
-                y = st.selectbox("Y-as", numeric_cols, index=1)
-                fig2, ax2 = plt.subplots()
-                sns.scatterplot(data=df, x=x, y=y, ax=ax2)
-                ax2.set_title(f"Relatie tussen {x} en {y}")
-                st.pyplot(fig2)
-            else:
-                st.warning("Minimaal twee numerieke kolommen nodig voor een scatterplot.")
-
-        elif plot_type == "Frequentieplot (categorisch)":
-            if category_cols:
-                cat_col = st.selectbox("Kolom voor frequentieplot", category_cols)
-                fig3, ax3 = plt.subplots()
-                sns.countplot(data=df, x=cat_col, order=df[cat_col].value_counts().index[:15], ax=ax3)
-                ax3.set_title(f"Frequentie van {cat_col}")
-                ax3.set_xticklabels(ax3.get_xticklabels(), rotation=45, ha='right')
-                st.pyplot(fig3)
-            else:
-                st.warning("Geen categorische kolommen beschikbaar.")
-
-    with tab3:
-        st.subheader("📥 Download analyse & gegevens")
-        summary = df.describe().transpose()
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Gegevens")
-            summary.to_excel(writer, sheet_name="Analyse")
-        st.download_button(
-            "📤 Download Excel-bestand",
-            data=output.getvalue(),
-            file_name="julubo_rapport.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-else:
-    st.info("⬆️ Upload een bestand om te starten.")
+        # Downloadknoppen
+        col_csv, col_excel = st.columns(2)
+        with col_csv:
+            st.download_button("⬇️ Download als CSV", data=df.to_csv(index=False), file_name="bedrijven.csv", mime="text/csv")
+        with col_excel:
+            towrite = BytesIO()
+            df.to_excel(towrite, index=False, engine="openpyxl")
+            st.download_button("⬇️ Download als Excel", data=towrite.getvalue(), file_name="bedrijven.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
