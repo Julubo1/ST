@@ -6,4 +6,7 @@ openpyxl
 xlsxwriter
 Pillow
 numpy
+io
+quote
+
 
