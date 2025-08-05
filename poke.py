@@ -6,7 +6,7 @@ import plotly.express as px
 
 # API-key ophalen
 API_KEY = os.getenv("POKETCG_API_KEY")
-HEADERS = {"X-Api-Key":"3b950abe-459d-4a04-9623-f1853ea0d4c8"}
+headers = {"X-Api-Key": API_KEY} if API_KEY else {}
 
 # ========== STYLING ==========
 st.markdown("""
