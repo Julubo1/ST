@@ -9,6 +9,8 @@ numpy
 Python-IO
 urllib3
 SPARQLWrapper
+plotly
+
 
 
 
