@@ -1,17 +1,11 @@
-import os
 import requests
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-### TESTIG TESTINGNG
-#### TETETET
-##TETEE
 # API-key ophalen
 API_KEY = st.secrets["POKETCG_API_KEY"]
-
 headers = {"X-Api-Key": API_KEY}
-
 
 # ========== STYLING ==========
 st.markdown("""
@@ -62,6 +56,16 @@ def load_price_history(card_id):
     except:
         return pd.DataFrame()
 
+@st.cache_data(ttl=3600)
+def get_usd_to_eur():
+    try:
+        resp = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=EUR")
+        resp.raise_for_status()
+        rate = resp.json().get("rates", {}).get("EUR")
+        return rate
+    except:
+        return None
+
 # ========== UI ==========
 
 sets = get_sets()
@@ -72,6 +76,8 @@ if not sets:
 set_opts = {s["name"]: s["id"] for s in sets}
 set_choice = st.selectbox("Kies kaartset", list(set_opts.keys()))
 card_name = st.text_input("Zoek kaart op naam")
+
+usd_to_eur = get_usd_to_eur()
 
 if st.button("Haal kaartdata"):
     if not card_name.strip():
@@ -92,8 +98,20 @@ if st.button("Haal kaartdata"):
 
     prices = card.get("tcgplayer", {}).get("prices") or card.get("tcgplayer", {})
     if prices:
-        st.write("💰 Huidige prijsinformatie:")
-        st.json(prices)
+        st.write("💰 Huidige prijsinformatie (USD en EUR):")
+        for price_type, price_info in prices.items():
+            price_usd = None
+            if isinstance(price_info, dict) and "market" in price_info:
+                price_usd = price_info["market"]
+            elif isinstance(price_info, (int, float)):
+                price_usd = price_info
+
+            if price_usd is not None:
+                if usd_to_eur:
+                    price_eur = price_usd * usd_to_eur
+                    st.write(f"{price_type}: ${price_usd:.2f} / €{price_eur:.2f}")
+                else:
+                    st.write(f"{price_type}: ${price_usd:.2f}")
     else:
         st.warning("Geen prijsinformatie beschikbaar.")
 
