@@ -9,7 +9,9 @@ import plotly.express as px
 ##TETEE
 # API-key ophalen
 API_KEY = st.secrets["POKETCG_API_KEY"]
+
 headers = {"X-Api-Key": API_KEY}
+st.write("API key loaded:", bool(API_KEY))
 
 # ========== STYLING ==========
 st.markdown("""
