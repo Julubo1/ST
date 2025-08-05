@@ -7,7 +7,32 @@ import plotly.express as px
 API_KEY = os.getenv("POKETCG_API_KEY")
 headers = {"X-Api-Key": API_KEY} if API_KEY else {}
 
-st.title("Julubo‑Pokémon Prijstracker")
+
+st.markdown("""
+<style>
+#MainMenu, footer {visibility: hidden;}
+.logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    gap: 15px;
+}
+.logo-container img {
+    height: 60px;
+}
+</style>
+<div class="logo-container">
+    <img src="https://julubo.nl/media/website/Logo-Julubo-2-2.png" alt="Julubo Logo">
+    <h2>Julubo Pokemon Prijstracker</h2>
+</div>
+<div style="text-align: center;">
+    <p></p>
+</div>
+""", unsafe_allow_html=True)
+
+
+#st.title("Julubo‑Pokémon Prijstracker")
 
 # Sets ophalen
 resp = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
