@@ -4,10 +4,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# API-key ophalen
 API_KEY = os.getenv("POKETCG_API_KEY")
-headers = {"X-Api-Key": API_KEY} if API_KEY else {}
+HEADERS = {"X-Api-Key": API_KEY} if API_KEY else {}
 
-
+# ========== STYLING ==========
 st.markdown("""
 <style>
 #MainMenu, footer {visibility: hidden;}
@@ -24,39 +25,76 @@ st.markdown("""
 </style>
 <div class="logo-container">
     <img src="https://julubo.nl/media/website/Logo-Julubo-2-2.png" alt="Julubo Logo">
-    <h2>Julubo Pokemon Prijstracker</h2>
-</div>
-<div style="text-align: center;">
-    <p></p>
+    <h2>Julubo Pokémon Prijstracker</h2>
 </div>
 """, unsafe_allow_html=True)
 
+# ========== FUNCTIES ==========
 
-#st.title("Julubo‑Pokémon Prijstracker")
+@st.cache_data(ttl=3600)
+def get_sets():
+    try:
+        r = requests.get("https://api.pokemontcg.io/v2/sets", headers=HEADERS)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except:
+        return []
 
-# Sets ophalen
-resp = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
-sets = resp.json().get("data", [])
+@st.cache_data(ttl=600)
+def search_card(set_id, card_name):
+    q = f"set.id:{set_id} name:{card_name}"
+    try:
+        r = requests.get("https://api.pokemontcg.io/v2/cards", headers=HEADERS, params={"q": q})
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except:
+        return []
+
+def load_price_history(card_id):
+    try:
+        df = pd.read_csv("price_history.csv")
+        return df[df["card_id"] == card_id]
+    except:
+        return pd.DataFrame()
+
+# ========== UI ==========
+
+sets = get_sets()
+if not sets:
+    st.error("Kon geen kaartsets laden. Controleer je internetverbinding of API-key.")
+    st.stop()
+
 set_opts = {s["name"]: s["id"] for s in sets}
-
 set_choice = st.selectbox("Kies kaartset", list(set_opts.keys()))
-card_name = st.text_input("Zoek kaart (naam)")
+card_name = st.text_input("Zoek kaart op naam")
 
 if st.button("Haal kaartdata"):
-    params = {"q": f"set.id:{set_opts[set_choice]} name:{card_name}"}
-    resp2 = requests.get("https://api.pokemontcg.io/v2/cards", params=params, headers=headers)
-    data = resp2.json().get("data", [])
-    if data:
-        card = data[0]
-        st.image(card["images"]["small"])
-        st.write(card["name"], card["set"]["name"])
-        prices = card.get("tcgplayer", {}).get("prices") or card.get("tcgplayer", {})
-        st.write("Huidige prijs:", prices)
-        # Historische data uit eigen CSV/database ophalen
-        df = pd.read_csv("price_history.csv")
-        df_card = df[(df["card_id"] == card["id"])]
-        if not df_card.empty:
-            fig = px.line(df_card, x="date", y="price", title=f"Prijsverloop – {card['name']}")
-            st.plotly_chart(fig)
+    if not card_name.strip():
+        st.warning("Voer een kaartnaam in.")
+        st.stop()
+
+    with st.spinner("Kaartdata ophalen..."):
+        cards = search_card(set_opts[set_choice], card_name)
+
+    if not cards:
+        st.error("Geen kaart gevonden met deze naam in de gekozen set.")
+        st.stop()
+
+    card = cards[0]
+    st.image(card["images"]["small"])
+    st.subheader(card["name"])
+    st.caption(f"Set: {card['set']['name']}")
+
+    prices = card.get("tcgplayer", {}).get("prices") or card.get("tcgplayer", {})
+    if prices:
+        st.write("💰 Huidige prijsinformatie:")
+        st.json(prices)
     else:
-        st.error("Kaart niet gevonden.")
+        st.warning("Geen prijsinformatie beschikbaar.")
+
+    df_card = load_price_history(card["id"])
+    if not df_card.empty:
+        fig = px.line(df_card, x="date", y="price", title=f"Prijsverloop – {card['name']}")
+        st.plotly_chart(fig)
+    else:
+        st.info("Geen historische prijsdata beschikbaar voor deze kaart.")
