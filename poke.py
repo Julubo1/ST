@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+
 # API-key ophalen
 API_KEY = os.getenv("POKETCG_API_KEY")
 headers = {"X-Api-Key": API_KEY} if API_KEY else {}
