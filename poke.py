@@ -8,8 +8,8 @@ import plotly.express as px
 #### TETETET
 ##TETEE
 # API-key ophalen
-API_KEY = os.getenv("POKETCG_API_KEY")
-headers = {"X-Api-Key": API_KEY} if API_KEY else {}
+API_KEY = st.secrets["POKETCG_API_KEY"]
+headers = {"X-Api-Key": API_KEY}
 
 # ========== STYLING ==========
 st.markdown("""
