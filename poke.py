@@ -39,7 +39,7 @@ st.markdown("""
 @st.cache_data(ttl=3600)
 def get_sets():
     try:
-        r = requests.get("https://api.pokemontcg.io/v2/sets", headers=HEADERS)
+        r = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
         r.raise_for_status()
         return r.json().get("data", [])
     except:
@@ -49,7 +49,7 @@ def get_sets():
 def search_card(set_id, card_name):
     q = f"set.id:{set_id} name:{card_name}"
     try:
-        r = requests.get("https://api.pokemontcg.io/v2/cards", headers=HEADERS, params={"q": q})
+        r = requests.get("https://api.pokemontcg.io/v2/cards", headers=headers, params={"q": q})
         r.raise_for_status()
         return r.json().get("data", [])
     except:
